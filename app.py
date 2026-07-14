@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import json
 import threading #  ESTA LIBRERÍA ES LA CLAVE PARA QUE NO SE CONGELE LA WEB
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Configuración visual
 st.set_page_config(page_title="Control de Producción Yobel", layout="wide")
@@ -79,7 +79,7 @@ with tab1:
             enviar_orden = st.form_submit_button("Notificar Fin de Orden")
             if enviar_orden:
                 if orden_id:
-                    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ahora = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
                     datos_orden = [ahora, codigo_id, orden_id, maq_sel, cantidad, turno_sel, observaciones]
                     enviar_a_sheet("Ordenes Terminadas", datos_orden)
                     st.toast('Registrado con éxito', icon='✅')
@@ -98,7 +98,7 @@ with tab1:
             
             enviar_parada = st.form_submit_button("Registrar Parada en Vivo")
             if enviar_parada:
-                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                ahora = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
                 datos_parada = [ahora, maq_parada, motivo, estado]
                 enviar_a_sheet("Paradas de maquinas", datos_parada)
                 st.toast('Alerta de máquina registrada', icon='🚨')
@@ -172,7 +172,7 @@ with tab2:
             
             if guardar_cierre:
                 if supervisor:
-                    ahora_cierre = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ahora_cierre = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
                     
                     # Recorremos cada máquina guardada en la memoria temporal y la mandamos al Sheets
                     for registro in st.session_state.temp_cierres:
