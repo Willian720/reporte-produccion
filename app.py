@@ -3,7 +3,8 @@ import pandas as pd
 import requests
 import json
 import threading #  ESTA LIBRERÍA ES LA CLAVE PARA QUE NO SE CONGELE LA WEB
-from datetime import datetime, timedelta
+import base64    #  LIBRERÍA PARA ENCRIPTAR FOTOs
+from datetime import datetime, timedelta 
 
 # Configuración visual
 st.set_page_config(page_title="Control de Producción Yobel", layout="wide")
@@ -18,15 +19,24 @@ URL_WEB_APP = "https://script.google.com/macros/s/AKfycbzzkMlrN4J0KDqDcao2_s2B9q
 SHEET_ID = "135RAldXiMWAFZ51SMeDspMDmQXMd73ob4ebOBq6m5gg"
 
 # 1. ENVÍO "FIRE AND FORGET" EN SEGUNDO PLANO
-def enviar_a_sheet(sheet_name, data_list):
+# Modificamos para que acepte parámetros opcionales de archivo
+def enviar_a_sheet(sheet_name, data_list, file_b64=None, file_name=None, mime_type=None):
     def tarea_silenciosa():
         try:
-            payload = {"sheetName": sheet_name, "data": json.dumps(data_list)}
+            payload = {
+                "sheetName": sheet_name, 
+                "data": json.dumps(data_list)
+            }
+            # Si hay un archivo adjunto, lo sumamos al payload
+            if file_b64 and file_name:
+                payload["fileB64"] = file_b64
+                payload["fileName"] = file_name
+                payload["mimeType"] = mime_type
+                
             requests.post(URL_WEB_APP, data=payload)
         except Exception as e:
-            print(f"Error oculto: {e}") # Se imprime en consola para no asustar al usuario ni bloquear la app
+            print(f"Error oculto: {e}")
             
-    # Arranca el proceso en el fondo y le devuelve el control a la web al instante
     hilo = threading.Thread(target=tarea_silenciosa)
     hilo.start()
 
@@ -54,7 +64,7 @@ def obtener_tabla(nombre_hoja, columnas_default):
 # Asignamos las variables de forma súper rápida
 df_ordenes = obtener_tabla("Ordenes Terminadas", ["Fecha y hora", "Codigo", "Orden", "Maquina", "Cantidad", "Observaciones"])
 df_paradas = obtener_tabla("Paradas de maquinas", ["Fecha y Hora", "Maquina", "Motivo", "Estado"])
-df_cierre = obtener_tabla("Cierre de turno", ["Fecha y hora", "Maquina", "Codigo", "Orden", "Cantidad", "Supervisor", "Turno"])
+df_cierre = obtener_tabla("Cierre de turno", ["Fecha y hora", "Maquina", "Codigo", "Orden", "Cantidad", "Supervisor", "Turno", "Foto Reporte"])
 
 MAQUINAS = ["Inyectora JM1", "Inyectora JM2", "Inyectora JM3", "Inyectora Haixing", "Sopladora PET", "Sopladora PARKER I", "Sopladora PARKER II", "Sopladora PB1000S", "Sopladora PB1000D", "Sopladora PB2000", "Sopladora PARKER 65", "Sopladora PARKER 75-2", "Sopladora PARKER 75-1", "Sopladora PARKER 75-3"]
 TURNOS = ["1er", "2do", "3er"]
@@ -79,7 +89,7 @@ with tab1:
             enviar_orden = st.form_submit_button("Notificar Fin de Orden")
             if enviar_orden:
                 if orden_id:
-                    ahora = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
+                    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     datos_orden = [ahora, codigo_id, orden_id, maq_sel, cantidad, turno_sel, observaciones]
                     enviar_a_sheet("Ordenes Terminadas", datos_orden)
                     st.toast('Registrado con éxito', icon='✅')
@@ -98,7 +108,7 @@ with tab1:
             
             enviar_parada = st.form_submit_button("Registrar Parada en Vivo")
             if enviar_parada:
-                ahora = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
+                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 datos_parada = [ahora, maq_parada, motivo, estado]
                 enviar_a_sheet("Paradas de maquinas", datos_parada)
                 st.toast('Alerta de máquina registrada', icon='🚨')
@@ -157,25 +167,37 @@ with tab2:
             st.success("Lista temporal limpiada.")
             st.rerun()
             
-        st.markdown("---")
+        # 4. CASILLA DE FOTO Y FORMULARIO FINAL PARA ENVIAR TODO
+        st.markdown("### Tomar Evidencia Física")
+        foto_reporte = st.file_uploader("Subir foto:", type=["png", "jpg", "jpeg"])
 
-        # 4. FORMULARIO FINAL PARA REGISTRAR SUPERVISOR, TURNO Y ENVIAR TODO
         with st.form("form_guardar_final"):
-            st.markdown("### Enviar Cierre de Turno Completo")
+            st.markdown("### 🚀 Paso 3: Enviar Cierre de Turno Completo")
             col_sup1, col_sup2 = st.columns(2)
             with col_sup1:
                 supervisor = st.text_input("Nombre del Supervisor Responsable:")
             with col_sup2:
-                turno = st.selectbox("Turno de Operación:", ["1er", "2do", "3er"])
+                turno = st.selectbox("Turno de Operación:", ["1ER TURNO", "2DO TURNO", "3ER TURNO"])
             
-            guardar_cierre = st.form_submit_button("Enviar reporte de producción")
+            guardar_cierre = st.form_submit_button("ENVIAR TODO EL REPORTE")
             
             if guardar_cierre:
                 if supervisor:
                     ahora_cierre = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
                     
-                    # Recorremos cada máquina guardada en la memoria temporal y la mandamos al Sheets
-                    for registro in st.session_state.temp_cierres:
+                    # Variables para procesar la foto si el usuario subió una
+                    file_b64 = None
+                    file_name = None
+                    mime_type = None
+                    
+                    if foto_reporte is not None:
+                        file_name = f"Reporte_{turno}_{ahora_cierre.replace('-', '').replace(':', '').replace(' ', '_')}.jpg"
+                        mime_type = foto_reporte.type
+                        # Convertimos los bytes de la imagen a una cadena de texto Base64
+                        file_b64 = base64.b64encode(foto_reporte.read()).decode("utf-8")
+                    
+                    # Enviamos los registros acumulados
+                    for i, registro in enumerate(st.session_state.temp_cierres):
                         datos_cierre = [
                             ahora_cierre,
                             registro["Maquina"],
@@ -185,11 +207,15 @@ with tab2:
                             supervisor,
                             turno
                         ]
-                        enviar_a_sheet("Cierre de turno", datos_cierre)
+                        
+                        # Para no subir la misma foto 4 veces, solo se la adjuntamos a la primera fila
+                        if i == 0 and file_b64:
+                            enviar_a_sheet("Cierre de turno", datos_cierre, file_b64, file_name, mime_type)
+                        else:
+                            enviar_a_sheet("Cierre de turno", datos_cierre)
                     
-                    # Limpiamos la memoria temporal para el siguiente turno
                     st.session_state.temp_cierres = []
-                    st.toast('- ¡Cierre de turno completado!', icon='✅')
+                    st.toast('✅ OK SUBIDO - ¡Cierre de turno y foto procesados!', icon='✅')
                     st.balloons()
                 else:
                     st.error("Por favor, ingresa el nombre del supervisor antes de enviar.")
