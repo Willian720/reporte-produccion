@@ -20,22 +20,23 @@ SHEET_ID = "135RAldXiMWAFZ51SMeDspMDmQXMd73ob4ebOBq6m5gg"
 
 # 1. ENVÍO "FIRE AND FORGET" EN SEGUNDO PLANO
 # Modificamos para que acepte parámetros opcionales de archivo
+# 1. ENVÍO OPTIMIZADO EN SEGUNDO PLANO (FORMATO JSON)
 def enviar_a_sheet(sheet_name, data_list, file_b64=None, file_name=None, mime_type=None):
     def tarea_silenciosa():
         try:
             payload = {
-                "sheetName": sheet_name, 
-                "data": json.dumps(data_list)
+                "sheetName": sheet_name,
+                "data": data_list  # Enviamos la lista nativa
             }
-            # Si hay un archivo adjunto, lo sumamos al payload
             if file_b64 and file_name:
                 payload["fileB64"] = file_b64
                 payload["fileName"] = file_name
                 payload["mimeType"] = mime_type
-                
-            requests.post(URL_WEB_APP, data=payload)
+            
+            # ⚡ CAMBIO CLAVE: Usamos 'json=' en lugar de 'data=' para envíos pesados
+            requests.post(URL_WEB_APP, json=payload)
         except Exception as e:
-            print(f"Error oculto: {e}")
+            print(f"Error oculto en el hilo: {e}")
             
     hilo = threading.Thread(target=tarea_silenciosa)
     hilo.start()
